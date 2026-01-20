@@ -1,0 +1,251 @@
+use crate::compose::{ComposeEntry, ComposeIndex};
+use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, SwashCache};
+use smithay_client_toolkit::{
+    reexports::client::protocol::{wl_shm, wl_surface::WlSurface},
+    shm::{slot::SlotPool, Shm},
+};
+use std::sync::Arc;
+use tiny_skia::{Color, Paint, Pixmap, Rect};
+use xkbcommon::xkb;
+
+fn bg_color() -> Color { Color::from_rgba(0.11, 0.11, 0.13, 1.0).unwrap() }
+fn input_bg() -> Color { Color::from_rgba(0.15, 0.15, 0.18, 1.0).unwrap() }
+fn text_primary() -> Color { Color::from_rgba(1.0, 1.0, 1.0, 1.0).unwrap() }
+fn text_secondary() -> Color { Color::from_rgba(0.75, 0.75, 0.78, 1.0).unwrap() }  // Lighter for better readability
+fn text_tertiary() -> Color { Color::from_rgba(0.5, 0.5, 0.55, 1.0).unwrap() }
+fn accent_color() -> Color { Color::from_rgba(0.5, 0.7, 1.0, 1.0).unwrap() }
+
+pub struct CharRefUI {
+    surface: WlSurface,
+    width: u32,
+    height: u32,
+    pixmap: Pixmap,
+    pool: SlotPool,
+
+    font_system: FontSystem,
+    swash_cache: SwashCache,
+
+    input_text: String,
+    compose_index: Arc<ComposeIndex>,
+}
+
+impl CharRefUI {
+    pub fn new(
+        surface: &WlSurface,
+        width: u32,
+        height: u32,
+        shm: &Shm,
+        compose_index: Arc<ComposeIndex>,
+    ) -> Self {
+        let pixmap = Pixmap::new(width, height).unwrap();
+        let pool = SlotPool::new((width * height * 4) as usize, shm)
+            .expect("Failed to create slot pool");
+
+        let font_system = FontSystem::new();
+        let swash_cache = SwashCache::new();
+
+        Self {
+            surface: surface.clone(),
+            width,
+            height,
+            pixmap,
+            pool,
+            font_system,
+            swash_cache,
+            input_text: String::new(),
+            compose_index,
+        }
+    }
+
+    pub fn handle_key_press(&mut self, _raw_code: u32, keysym: xkb::Keysym) {
+        // Handle backspace
+        if keysym == xkb::Keysym::BackSpace {
+            self.input_text.clear();
+            return;
+        }
+
+        // Convert keysym to char
+        let utf32 = xkb::keysym_to_utf32(keysym);
+        if let Some(ch) = char::from_u32(utf32) {
+            if ch.is_alphabetic() {
+                // Replace input with just this character (single-letter filter)
+                self.input_text.clear();
+                self.input_text.push(ch);
+            }
+        }
+    }
+
+    pub fn render(&mut self) {
+        // Clear background
+        self.pixmap.fill(bg_color());
+
+        // Get results
+        let results = if self.input_text.is_empty() {
+            Vec::new()
+        } else {
+            self.compose_index.find_variants(&self.input_text)
+        };
+
+        // Render input at top
+        let input_y = 18.0;
+
+        // Draw input text or hint
+        if self.input_text.is_empty() {
+            self.draw_text_colored("Type a letter...", 20.0, input_y, 14.0, text_tertiary());
+        } else {
+            let text = format!("→ {}", self.input_text);
+            self.draw_text_colored(&text, 20.0, input_y, 16.0, accent_color());
+        }
+
+        // Render results with spacing adjusted for larger text
+        let mut y = 50.0;
+        if results.is_empty() && !self.input_text.is_empty() {
+            self.draw_text_colored("No special characters found", 20.0, y, 13.0, text_tertiary());
+        } else if !results.is_empty() {
+            for entry in results.iter().take(10) {
+                self.draw_result(&entry, 20.0, y);
+                y += 34.0;  // Spacing for larger text
+            }
+        }
+
+        // Show hints when empty
+        if self.input_text.is_empty() {
+            let hints_y = (self.height as f32) - 80.0;
+            self.draw_text_colored("Find special characters:", 20.0, hints_y, 13.0, text_secondary());
+            self.draw_text_colored("Try: a e i o u c n s z l y", 20.0, hints_y + 20.0, 12.0, text_tertiary());
+            self.draw_text_colored("ESC to close", 20.0, hints_y + 45.0, 12.0, text_tertiary());
+        }
+
+        // Copy pixmap to Wayland buffer
+        // Use Xrgb8888 (no alpha channel) to prevent compositor from blending with windows behind
+        let stride = self.width as i32 * 4;
+        let (buffer, canvas) = self.pool
+            .create_buffer(
+                self.width as i32,
+                self.height as i32,
+                stride,
+                wl_shm::Format::Xrgb8888,
+            )
+            .expect("Failed to create buffer");
+
+        canvas.copy_from_slice(self.pixmap.data());
+
+        self.surface.attach(Some(buffer.wl_buffer()), 0, 0);
+        self.surface.damage_buffer(0, 0, self.width as i32, self.height as i32);
+    }
+
+    fn draw_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: Color) {
+        let rect = Rect::from_xywh(x, y, w, h).unwrap();
+        self.pixmap.fill_rect(rect, &Paint {
+            shader: tiny_skia::Shader::SolidColor(color),
+            ..Default::default()
+        }, tiny_skia::Transform::identity(), None);
+    }
+
+    fn draw_rounded_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: Color) {
+        use tiny_skia::{PathBuilder, FillRule};
+
+        let mut pb = PathBuilder::new();
+        // Top left
+        pb.move_to(x + radius, y);
+        // Top right
+        pb.line_to(x + w - radius, y);
+        pb.quad_to(x + w, y, x + w, y + radius);
+        // Bottom right
+        pb.line_to(x + w, y + h - radius);
+        pb.quad_to(x + w, y + h, x + w - radius, y + h);
+        // Bottom left
+        pb.line_to(x + radius, y + h);
+        pb.quad_to(x, y + h, x, y + h - radius);
+        // Back to top left
+        pb.line_to(x, y + radius);
+        pb.quad_to(x, y, x + radius, y);
+        pb.close();
+
+        if let Some(path) = pb.finish() {
+            self.pixmap.fill_path(&path, &Paint {
+                shader: tiny_skia::Shader::SolidColor(color),
+                ..Default::default()
+            }, FillRule::Winding, tiny_skia::Transform::identity(), None);
+        }
+    }
+
+    fn draw_text(&mut self, text: &str, x: f32, y: f32, size: f32, _bold: bool) {
+        self.draw_text_colored(text, x, y, size, text_primary());
+    }
+
+    fn draw_text_colored(&mut self, text: &str, x: f32, y: f32, size: f32, color: Color) {
+        use cosmic_text::Color as CosmicColor;
+
+        // Create a buffer for this text
+        let metrics = Metrics::new(size, size * 1.4);
+        let mut buffer = Buffer::new(&mut self.font_system, metrics);
+
+        // Borrow the buffer with the font system
+        let mut buffer_ref = buffer.borrow_with(&mut self.font_system);
+
+        // Set buffer size and text
+        buffer_ref.set_size(Some(self.width as f32), Some(self.height as f32));
+        buffer_ref.set_text(text, Attrs::new(), Shaping::Advanced);
+
+        // Shape the text
+        buffer_ref.shape_until_scroll(false);
+
+        // Convert tiny_skia Color to CosmicColor
+        let text_color = CosmicColor::rgb(
+            (color.red() * 255.0) as u8,
+            (color.green() * 255.0) as u8,
+            (color.blue() * 255.0) as u8
+        );
+
+        // Use buffer.draw() which handles glyph rasterization internally
+        buffer_ref.draw(&mut self.swash_cache, text_color, |px: i32, py: i32, w: u32, h: u32, color: CosmicColor| {
+            // px, py are pixel positions from cosmic-text, offset them to our desired location
+            let pixel_x = (x as i32) + px;
+            let pixel_y = (y as i32) + py;
+
+            // Only handle single-pixel draws (w=1, h=1)
+            if w != 1 || h != 1 {
+                return;
+            }
+
+            // Check bounds
+            if pixel_x < 0 || pixel_x >= self.width as i32 || pixel_y < 0 || pixel_y >= self.height as i32 {
+                return;
+            }
+
+            // Draw the pixel
+            let idx = (pixel_y * self.width as i32 + pixel_x) as usize;
+            self.pixmap.pixels_mut()[idx] =
+                tiny_skia::ColorU8::from_rgba(color.r(), color.g(), color.b(), color.a()).premultiply();
+        });
+    }
+
+    fn draw_result(&mut self, entry: &ComposeEntry, x: f32, y: f32) {
+        // Draw character (large and prominent) - 28px
+        self.draw_text_colored(&entry.character, x, y, 28.0, text_primary());
+
+        // Draw arrow - centered vertically
+        self.draw_text_colored("→", x + 50.0, y + 8.0, 14.0, text_tertiary());
+
+        // Parse the key sequence to extract the important part
+        // Format: "AltGr+X y" where X is the accent key
+        if let Some(rest) = entry.key_sequence.strip_prefix("AltGr+") {
+            // Extract just the accent key (everything before the space or end)
+            let accent_key = if let Some(space_pos) = rest.find(' ') {
+                &rest[..space_pos]
+            } else {
+                rest  // No space, use everything (e.g., "AltGr+5")
+            };
+
+            // Draw "AltGr" small and dim - vertically centered
+            self.draw_text_colored("AltGr", x + 75.0, y + 11.0, 12.0, text_tertiary());
+
+            // Draw the accent key LARGE and prominent - vertically centered
+            self.draw_text_colored(accent_key, x + 125.0, y + 3.0, 24.0, accent_color());
+        } else {
+            // Fallback: just draw the sequence as-is
+            self.draw_text_colored(&entry.key_sequence, x + 75.0, y + 7.0, 16.0, text_secondary());
+        }
+    }
+}

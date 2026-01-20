@@ -1,0 +1,13 @@
+[package]
+name = "kbdviz"
+version = "0.2.0"
+edition = "2021"
+
+[dependencies]
+xkbcommon = "0.8"
+wayland-client = "0.31"
+smithay-client-toolkit = { version = "0.19", default-features = false, features = ["calloop", "xkbcommon"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+calloop = "0.14"
+cosmic-text = "0.13"
+tiny-skia = "0.11"
