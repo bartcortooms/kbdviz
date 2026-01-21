@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Build Debian package
+        run: cargo deb
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Prepare release assets
+        run: |
+          cp target/release/kbdviz kbdviz-${{ steps.version.outputs.VERSION }}-linux-x86_64
+          chmod +x kbdviz-${{ steps.version.outputs.VERSION }}-linux-x86_64
+          cp target/debian/*.deb kbdviz_${{ steps.version.outputs.VERSION }}_amd64.deb
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            kbdviz-${{ steps.version.outputs.VERSION }}-linux-x86_64
+            kbdviz_${{ steps.version.outputs.VERSION }}_amd64.deb
