@@ -4,6 +4,7 @@ mod ui;
 
 use compose::ComposeIndex;
 use keyboard::XkbKeymap;
+use std::env;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
@@ -40,10 +41,94 @@ use ui::CharRefUI;
 const WINDOW_WIDTH: u32 = 280;
 const WINDOW_HEIGHT: u32 = 420;
 
+#[derive(Clone)]
+struct Config {
+    anchor: Anchor,
+    margin: u32,
+    initial_char: Option<char>,
+}
+
+impl Config {
+    fn from_args() -> Result<Self, String> {
+        let args: Vec<String> = env::args().collect();
+        let mut anchor = Anchor::empty(); // centered by default
+        let mut margin = 0u32;
+        let mut initial_char = None;
+
+        let mut i = 1;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--help" | "-h" => {
+                    eprintln!("Usage: kbdviz [OPTIONS]");
+                    eprintln!();
+                    eprintln!("Options:");
+                    eprintln!("  --anchor <POS>     Position: top-left, top-right, bottom-left,");
+                    eprintln!("                     bottom-right, top, bottom, left, right, center");
+                    eprintln!("  --margin <PX>      Margin from screen edges (default: 0)");
+                    eprintln!("  --char <LETTER>    Show variants for this character on startup");
+                    eprintln!("  -h, --help         Show this help");
+                    std::process::exit(0);
+                }
+                "--anchor" => {
+                    i += 1;
+                    if i >= args.len() {
+                        return Err("--anchor requires a value".to_string());
+                    }
+                    anchor = match args[i].as_str() {
+                        "top-left" => Anchor::TOP | Anchor::LEFT,
+                        "top-right" => Anchor::TOP | Anchor::RIGHT,
+                        "bottom-left" => Anchor::BOTTOM | Anchor::LEFT,
+                        "bottom-right" => Anchor::BOTTOM | Anchor::RIGHT,
+                        "top" => Anchor::TOP,
+                        "bottom" => Anchor::BOTTOM,
+                        "left" => Anchor::LEFT,
+                        "right" => Anchor::RIGHT,
+                        "center" => Anchor::empty(),
+                        other => return Err(format!("Unknown anchor: {}", other)),
+                    };
+                }
+                "--margin" => {
+                    i += 1;
+                    if i >= args.len() {
+                        return Err("--margin requires a value".to_string());
+                    }
+                    margin = args[i].parse().map_err(|_| "Invalid margin value")?;
+                }
+                "--char" => {
+                    i += 1;
+                    if i >= args.len() {
+                        return Err("--char requires a value".to_string());
+                    }
+                    let c = args[i].chars().next().ok_or("--char requires a character")?;
+                    if !c.is_alphabetic() {
+                        return Err("--char must be a letter".to_string());
+                    }
+                    initial_char = Some(c);
+                }
+                arg => {
+                    return Err(format!("Unknown argument: {}", arg));
+                }
+            }
+            i += 1;
+        }
+
+        Ok(Config { anchor, margin, initial_char })
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = match Config::from_args() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            eprintln!("Try --help for usage");
+            std::process::exit(1);
+        }
+    };
+
     eprintln!("Starting kbdviz character reference tool...");
 
-    let (mut app, mut event_loop) = App::new()?;
+    let (mut app, mut event_loop) = App::new(config)?;
 
     eprintln!("Layer surface created, starting event loop...");
     eprintln!("Waiting for keymap from compositor...");
@@ -66,10 +151,11 @@ struct App {
 
     ui: Option<CharRefUI>,
     compose_index: Option<Arc<ComposeIndex>>,  // None until we receive keymap from compositor
+    initial_char: Option<char>,
 }
 
 impl App {
-    fn new() -> Result<(Self, EventLoop<'static, Self>), Box<dyn std::error::Error>> {
+    fn new(config: Config) -> Result<(Self, EventLoop<'static, Self>), Box<dyn std::error::Error>> {
         let conn = Connection::connect_to_env()?;
         let (globals, event_queue) = registry_queue_init::<Self>(&conn)?;
         let qh: QueueHandle<Self> = event_queue.handle();
@@ -91,7 +177,8 @@ impl App {
             None,
         );
 
-        layer_surface.set_anchor(Anchor::empty());  // Centered
+        layer_surface.set_anchor(config.anchor);
+        layer_surface.set_margin(config.margin as i32, config.margin as i32, config.margin as i32, config.margin as i32);
         layer_surface.set_exclusive_zone(0);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         layer_surface.set_size(WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -116,6 +203,7 @@ impl App {
             configured: false,
             ui: None,
             compose_index: None,  // Will be populated when we receive keymap
+            initial_char: config.initial_char,
         };
 
         Ok((app, event_loop))
@@ -145,13 +233,18 @@ impl App {
         if let Some(ref layer_surface) = self.layer_surface {
             let surface = layer_surface.wl_surface();
             // Get the configured size from the layer surface
-            self.ui = Some(CharRefUI::new(
+            let mut ui = CharRefUI::new(
                 surface,
                 WINDOW_WIDTH,
                 WINDOW_HEIGHT,
                 &self.shm,
                 self.compose_index.clone().unwrap(),
-            ));
+            );
+            // Apply initial filter if specified via --char
+            if let Some(c) = self.initial_char {
+                ui.set_filter(c);
+            }
+            self.ui = Some(ui);
             self.render();
         }
     }

@@ -85,6 +85,12 @@ impl CharRefUI {
         }
     }
 
+    /// Set the filter character (for --char option)
+    pub fn set_filter(&mut self, c: char) {
+        self.input_text.clear();
+        self.input_text.push(c);
+    }
+
     pub fn handle_key_press(&mut self, _raw_code: u32, keysym: xkb::Keysym) {
         // Clear copied indicator on any key press
         self.copied_row = None;
