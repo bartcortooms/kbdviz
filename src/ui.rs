@@ -391,10 +391,10 @@ impl CharRefUI {
         if is_copied {
             // Copied: slightly brighter highlight
             let copied_color = tiny_skia::ColorU8::from_rgba(42, 42, 48, 255);
-            self.draw_row_highlight(0.0, y - 2.0, self.width as f32, row_height, copied_color);
+            self.draw_row_highlight(0.0, y + 3.0, self.width as f32, row_height, copied_color);
         } else if is_hovered {
             // Hover: subtle highlight
-            self.draw_row_highlight(0.0, y - 2.0, self.width as f32, row_height, hover_highlight());
+            self.draw_row_highlight(0.0, y + 3.0, self.width as f32, row_height, hover_highlight());
         }
 
         // Draw character (large and prominent) - 28px
