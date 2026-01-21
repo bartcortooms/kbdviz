@@ -1,4 +1,4 @@
-use crate::keyboard::XkbManager;
+use crate::keyboard::XkbKeymap;
 use std::collections::HashMap;
 
 /// Represents a single compose sequence result
@@ -20,96 +20,178 @@ impl ComposeIndex {
         self.index.len()
     }
 
-    /// Build the compose index from XKB manager
-    pub fn build(_xkb: &XkbManager) -> Result<Self, String> {
+    /// Build the compose index from XKB keymap
+    pub fn build(xkb: &XkbKeymap) -> Result<Self, String> {
+        use xkbcommon::xkb;
+
         let mut index: HashMap<char, Vec<ComposeEntry>> = HashMap::new();
+        let keymap = xkb.keymap();
 
-        // For now, manually define common compose sequences
-        // TODO: Parse from /usr/share/X11/locale/*/Compose or use libxkbcommon compose API
+        // Iterate through all keycodes (8-255 is the standard range)
+        for keycode_raw in 8..256 {
+            let keycode = xkb::Keycode::new(keycode_raw);
 
-        // Letter E variants
-        add_entry(&mut index, 'e', "é", "AltGr+' e");
-        add_entry(&mut index, 'e', "è", "AltGr+` e");
-        add_entry(&mut index, 'e', "ë", "AltGr+\" e");
-        add_entry(&mut index, 'e', "ê", "AltGr+^ e");
-        add_entry(&mut index, 'e', "ẽ", "AltGr+~ e");
-        add_entry(&mut index, 'e', "ē", "AltGr+- e");
-        add_entry(&mut index, 'e', "ė", "AltGr+. e");
-        add_entry(&mut index, 'e', "ę", "AltGr+; e");
+            // Skip if no key name
+            if keymap.key_get_name(keycode).is_none() {
+                continue;
+            }
 
-        // Letter A variants
-        add_entry(&mut index, 'a', "á", "AltGr+' a");
-        add_entry(&mut index, 'a', "à", "AltGr+` a");
-        add_entry(&mut index, 'a', "ä", "AltGr+\" a");
-        add_entry(&mut index, 'a', "â", "AltGr+^ a");
-        add_entry(&mut index, 'a', "ã", "AltGr+~ a");
-        add_entry(&mut index, 'a', "ā", "AltGr+- a");
-        add_entry(&mut index, 'a', "ą", "AltGr+; a");
-        add_entry(&mut index, 'a', "å", "AltGr+o a");
+            // XKB levels: 0=Base, 1=Shift, 2=AltGr, 3=AltGr+Shift
+            let num_levels = keymap.num_levels_for_key(keycode, 0);
 
-        // Letter O variants
-        add_entry(&mut index, 'o', "ó", "AltGr+' o");
-        add_entry(&mut index, 'o', "ò", "AltGr+` o");
-        add_entry(&mut index, 'o', "ö", "AltGr+\" o");
-        add_entry(&mut index, 'o', "ô", "AltGr+^ o");
-        add_entry(&mut index, 'o', "õ", "AltGr+~ o");
-        add_entry(&mut index, 'o', "ō", "AltGr+- o");
-        add_entry(&mut index, 'o', "ø", "AltGr+/ o");
+            // Get level 2 character to compare with level 3
+            let level2_char: Option<char> = if num_levels > 2 {
+                let syms = keymap.key_get_syms_by_level(keycode, 0, 2);
+                if !syms.is_empty() {
+                    char::from_u32(xkb::keysym_to_utf32(syms[0]))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
-        // Letter U variants
-        add_entry(&mut index, 'u', "ú", "AltGr+' u");
-        add_entry(&mut index, 'u', "ù", "AltGr+` u");
-        add_entry(&mut index, 'u', "ü", "AltGr+\" u");
-        add_entry(&mut index, 'u', "û", "AltGr+^ u");
-        add_entry(&mut index, 'u', "ũ", "AltGr+~ u");
-        add_entry(&mut index, 'u', "ū", "AltGr+- u");
-        add_entry(&mut index, 'u', "ų", "AltGr+; u");
+            for level in 0..num_levels {
+                // Get the keysyms for this level
+                let syms = keymap.key_get_syms_by_level(keycode, 0, level);
 
-        // Letter I variants
-        add_entry(&mut index, 'i', "í", "AltGr+' i");
-        add_entry(&mut index, 'i', "ì", "AltGr+` i");
-        add_entry(&mut index, 'i', "ï", "AltGr+\" i");
-        add_entry(&mut index, 'i', "î", "AltGr+^ i");
-        add_entry(&mut index, 'i', "ĩ", "AltGr+~ i");
-        add_entry(&mut index, 'i', "ī", "AltGr+- i");
-        add_entry(&mut index, 'i', "į", "AltGr+; i");
+                if syms.is_empty() {
+                    continue;
+                }
 
-        // Letter N variants
-        add_entry(&mut index, 'n', "ñ", "AltGr+~ n");
-        add_entry(&mut index, 'n', "ń", "AltGr+' n");
+                let keysym = syms[0];
 
-        // Letter C variants
-        add_entry(&mut index, 'c', "ç", "AltGr+, c");
-        add_entry(&mut index, 'c', "ć", "AltGr+' c");
-        add_entry(&mut index, 'c', "č", "AltGr+v c");
+                // Convert keysym to UTF-32 character
+                let utf32 = xkb::keysym_to_utf32(keysym);
+                if let Some(ch) = char::from_u32(utf32) {
+                    // Skip control characters and whitespace
+                    if ch.is_control() || ch.is_whitespace() {
+                        continue;
+                    }
 
-        // Letter S variants
-        add_entry(&mut index, 's', "ś", "AltGr+' s");
-        add_entry(&mut index, 's', "š", "AltGr+v s");
-        add_entry(&mut index, 's', "ş", "AltGr+, s");
-        add_entry(&mut index, 's', "ß", "AltGr+s");
+                    // Determine modifier prefix based on level
+                    let mod_prefix = match level {
+                        0 => {
+                            // Skip basic ASCII letters at level 0 (no modifiers)
+                            if ch.is_ascii_lowercase() {
+                                continue;
+                            }
+                            ""
+                        },
+                        1 => {
+                            // Skip uppercase ASCII at level 1 (Shift)
+                            if ch.is_ascii_uppercase() {
+                                continue;
+                            }
+                            "Shift+"
+                        },
+                        2 => "AltGr+",
+                        3 => {
+                            // Skip if this is just the uppercase of level 2
+                            // (obvious Shift capitalization)
+                            if let Some(l2_char) = level2_char {
+                                if ch == l2_char.to_uppercase().next().unwrap_or(l2_char)
+                                   && ch != l2_char {
+                                    continue;
+                                }
+                            }
+                            "AltGr+Shift+"
+                        },
+                        _ => continue,
+                    };
 
-        // Letter Y variants
-        add_entry(&mut index, 'y', "ý", "AltGr+' y");
-        add_entry(&mut index, 'y', "ÿ", "AltGr+\" y");
+                    // Get the physical key name (what key to press)
+                    let key_name = keymap.key_get_name(keycode).unwrap_or("?");
 
-        // Letter Z variants
-        add_entry(&mut index, 'z', "ź", "AltGr+' z");
-        add_entry(&mut index, 'z', "ž", "AltGr+v z");
-        add_entry(&mut index, 'z', "ż", "AltGr+. z");
+                    // Convert XKB key name to something user-friendly
+                    // XKB names are like "AD01" (row A, position D, key 01) or "AC01", etc.
+                    // We need to show the actual character on that key (level 0)
+                    let base_sym = keymap.key_get_syms_by_level(keycode, 0, 0);
+                    let physical_key = if !base_sym.is_empty() {
+                        let base_char = xkb::keysym_to_utf32(base_sym[0]);
+                        if let Some(c) = char::from_u32(base_char) {
+                            if c.is_ascii_graphic() {
+                                c.to_string()
+                            } else {
+                                key_name.to_string()
+                            }
+                        } else {
+                            key_name.to_string()
+                        }
+                    } else {
+                        key_name.to_string()
+                    };
 
-        // Letter L variants
-        add_entry(&mut index, 'l', "ł", "AltGr+/ l");
+                    // Build the key sequence string (use dash for simultaneous keys)
+                    let key_sequence = format!("{}{}", mod_prefix.replace('+', "-"), physical_key);
 
-        // Special characters accessible via base characters
-        add_entry(&mut index, 'a', "æ", "AltGr+z");
-        add_entry(&mut index, 'o', "œ", "AltGr+x");
+                    // Try to find a base character to index this under
+                    if let Some(base) = find_base_char(ch) {
+                        add_entry(&mut index, base, &ch.to_string(), &key_sequence);
+                    }
+                }
+            }
+        }
 
-        // Currency symbols
-        add_entry(&mut index, 'e', "€", "AltGr+5");
-        add_entry(&mut index, 'c', "¢", "AltGr+c");
-        add_entry(&mut index, 'l', "£", "AltGr+3");
-        add_entry(&mut index, 'y', "¥", "AltGr+y");
+        // Now scan for dead keys and add their combinations
+        let mut dead_keys: Vec<(String, String)> = Vec::new(); // (physical_key, dead_key_type)
+
+        for keycode_raw in 8..256 {
+            let keycode = xkb::Keycode::new(keycode_raw);
+
+            if keymap.key_get_name(keycode).is_none() {
+                continue;
+            }
+
+            let num_levels = keymap.num_levels_for_key(keycode, 0);
+
+            for level in 2..num_levels.min(4) {  // Only AltGr levels
+                let syms = keymap.key_get_syms_by_level(keycode, 0, level);
+                if syms.is_empty() {
+                    continue;
+                }
+
+                let keysym = syms[0];
+                let keysym_name = xkb::keysym_get_name(keysym);
+
+                // Check if this is a dead key
+                if keysym_name.starts_with("dead_") {
+                    // Get the physical key
+                    let base_sym = keymap.key_get_syms_by_level(keycode, 0, 0);
+                    let physical_key = if !base_sym.is_empty() {
+                        let base_char = xkb::keysym_to_utf32(base_sym[0]);
+                        if let Some(c) = char::from_u32(base_char) {
+                            if c.is_ascii_graphic() {
+                                c.to_string()
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    };
+
+                    let mod_prefix = if level == 2 { "AltGr-" } else { "AltGr-Shift-" };
+                    dead_keys.push((format!("{}{}", mod_prefix, physical_key), keysym_name.clone()));
+                }
+            }
+        }
+
+        // Add dead key combinations
+        for (dead_key_combo, dead_type) in &dead_keys {
+            let combinations = get_dead_key_combinations(dead_type);
+            for (base_letter, result_char) in combinations {
+                // Use space to separate sequential steps
+                let key_sequence = format!("{}  {}", dead_key_combo, base_letter);
+                if let Some(base) = find_base_char(result_char) {
+                    add_entry(&mut index, base, &result_char.to_string(), &key_sequence);
+                }
+            }
+        }
+
+        eprintln!("Found {} base characters with variants", index.len());
 
         Ok(Self { index })
     }
@@ -156,4 +238,81 @@ fn add_entry(
         .entry(base)
         .or_insert_with(Vec::new)
         .push(entry);
+}
+
+/// Get common dead key combinations
+/// Returns pairs of (base_letter, result_character)
+fn get_dead_key_combinations(dead_type: &str) -> Vec<(char, char)> {
+    match dead_type {
+        "dead_acute" => vec![
+            ('a', 'á'), ('e', 'é'), ('i', 'í'), ('o', 'ó'), ('u', 'ú'),
+            ('y', 'ý'), ('c', 'ć'), ('n', 'ń'), ('s', 'ś'), ('z', 'ź'),
+        ],
+        "dead_grave" => vec![
+            ('a', 'à'), ('e', 'è'), ('i', 'ì'), ('o', 'ò'), ('u', 'ù'),
+        ],
+        "dead_circumflex" => vec![
+            ('a', 'â'), ('e', 'ê'), ('i', 'î'), ('o', 'ô'), ('u', 'û'),
+        ],
+        "dead_diaeresis" => vec![
+            ('a', 'ä'), ('e', 'ë'), ('i', 'ï'), ('o', 'ö'), ('u', 'ü'), ('y', 'ÿ'),
+        ],
+        "dead_tilde" => vec![
+            ('a', 'ã'), ('n', 'ñ'), ('o', 'õ'),
+        ],
+        "dead_cedilla" => vec![
+            ('c', 'ç'), ('s', 'ş'),
+        ],
+        "dead_ogonek" => vec![
+            ('a', 'ą'), ('e', 'ę'), ('i', 'į'), ('u', 'ų'),
+        ],
+        "dead_caron" => vec![
+            ('c', 'č'), ('s', 'š'), ('z', 'ž'), ('r', 'ř'), ('e', 'ě'),
+        ],
+        "dead_breve" => vec![
+            ('a', 'ă'), ('g', 'ğ'),
+        ],
+        "dead_macron" => vec![
+            ('a', 'ā'), ('e', 'ē'), ('i', 'ī'), ('o', 'ō'), ('u', 'ū'),
+        ],
+        "dead_abovedot" => vec![
+            ('e', 'ė'), ('z', 'ż'),
+        ],
+        "dead_abovering" => vec![
+            ('a', 'å'), ('u', 'ů'),
+        ],
+        "dead_stroke" => vec![
+            ('l', 'ł'), ('o', 'ø'),
+        ],
+        _ => vec![],
+    }
+}
+
+/// Find the base character for an accented character
+/// e.g., é → e, ñ → n, ø → o
+fn find_base_char(ch: char) -> Option<char> {
+    // Use Unicode NFD decomposition to strip accents
+    use unicode_normalization::UnicodeNormalization;
+
+    let decomposed: String = ch.nfd().collect();
+    let base = decomposed.chars().next()?;
+
+    // Only return if it's a letter
+    if base.is_alphabetic() && base.is_ascii() {
+        Some(base.to_ascii_lowercase())
+    } else {
+        // For special characters like €, £, etc., try to map to related letters
+        match ch {
+            '€' => Some('e'),
+            '£' => Some('l'),
+            '¥' => Some('y'),
+            '¢' => Some('c'),
+            'æ' => Some('a'),
+            'œ' => Some('o'),
+            'ß' => Some('s'),
+            'ð' => Some('d'),
+            'þ' => Some('t'),
+            _ => None,
+        }
+    }
 }

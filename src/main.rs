@@ -3,7 +3,7 @@ mod keyboard;
 mod ui;
 
 use compose::ComposeIndex;
-use keyboard::XkbManager;
+use keyboard::XkbKeymap;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_registry,
@@ -21,7 +21,7 @@ use smithay_client_toolkit::{
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     seat::{
-        keyboard::{KeyEvent, KeyboardHandler, Modifiers},
+        keyboard::{KeyEvent, KeyboardHandler, Keymap, Modifiers},
         Capability, SeatHandler, SeatState,
     },
     shell::{
@@ -42,14 +42,10 @@ const WINDOW_HEIGHT: u32 = 400;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("Starting kbdviz character reference tool...");
 
-    // Initialize XKB and build compose index
-    let xkb_manager = XkbManager::new()?;
-    let compose_index = Arc::new(ComposeIndex::build(&xkb_manager)?);
-    eprintln!("Loaded {} base characters with variants", compose_index.count());
-
-    let (mut app, mut event_loop) = App::new(compose_index)?;
+    let (mut app, mut event_loop) = App::new()?;
 
     eprintln!("Layer surface created, starting event loop...");
+    eprintln!("Waiting for keymap from compositor...");
     event_loop.run(None, &mut app, |_| {})?;
 
     Ok(())
@@ -68,11 +64,11 @@ struct App {
     configured: bool,
 
     ui: Option<CharRefUI>,
-    compose_index: Arc<ComposeIndex>,
+    compose_index: Option<Arc<ComposeIndex>>,  // None until we receive keymap from compositor
 }
 
 impl App {
-    fn new(compose_index: Arc<ComposeIndex>) -> Result<(Self, EventLoop<'static, Self>), Box<dyn std::error::Error>> {
+    fn new() -> Result<(Self, EventLoop<'static, Self>), Box<dyn std::error::Error>> {
         let conn = Connection::connect_to_env()?;
         let (globals, event_queue) = registry_queue_init::<Self>(&conn)?;
         let qh: QueueHandle<Self> = event_queue.handle();
@@ -118,7 +114,7 @@ impl App {
             layer_surface: Some(layer_surface),
             configured: false,
             ui: None,
-            compose_index,
+            compose_index: None,  // Will be populated when we receive keymap
         };
 
         Ok((app, event_loop))
@@ -136,6 +132,26 @@ impl App {
         if let (Some(ref layer_surface), Some(ref mut ui)) = (&self.layer_surface, &mut self.ui) {
             ui.render();
             layer_surface.wl_surface().commit();
+        }
+    }
+
+    /// Try to create the UI - requires both surface configured and keymap received
+    fn try_create_ui(&mut self) {
+        if !self.configured || self.compose_index.is_none() || self.ui.is_some() {
+            return;
+        }
+
+        if let Some(ref layer_surface) = self.layer_surface {
+            let surface = layer_surface.wl_surface();
+            // Get the configured size from the layer surface
+            self.ui = Some(CharRefUI::new(
+                surface,
+                WINDOW_WIDTH,
+                WINDOW_HEIGHT,
+                &self.shm,
+                self.compose_index.clone().unwrap(),
+            ));
+            self.render();
         }
     }
 }
@@ -162,22 +178,11 @@ impl LayerShellHandler for App {
         self.exit();
     }
 
-    fn configure(&mut self, _: &Connection, qh: &QueueHandle<Self>, _: &LayerSurface, configure: LayerSurfaceConfigure, _: u32) {
+    fn configure(&mut self, _: &Connection, _qh: &QueueHandle<Self>, _: &LayerSurface, configure: LayerSurfaceConfigure, _: u32) {
         if !self.configured {
             eprintln!("Layer surface configured: {}x{}", configure.new_size.0, configure.new_size.1);
-
-            if let Some(ref layer_surface) = self.layer_surface {
-                self.ui = Some(CharRefUI::new(
-                    layer_surface.wl_surface(),
-                    configure.new_size.0,
-                    configure.new_size.1,
-                    &self.shm,
-                    self.compose_index.clone(),
-                ));
-            }
-
             self.configured = true;
-            self.render();
+            self.try_create_ui();
         }
     }
 }
@@ -199,6 +204,27 @@ impl SeatHandler for App {
 impl KeyboardHandler for App {
     fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface, _: u32, _: &[u32], _: &[xkbcommon::xkb::Keysym]) {}
     fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface, _: u32) {}
+
+    fn update_keymap(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, keymap: Keymap<'_>) {
+        eprintln!("Received keymap from compositor");
+
+        // Get the keymap as a string and create our XkbKeymap
+        let keymap_string = keymap.as_string();
+        match XkbKeymap::from_string(&keymap_string) {
+            Ok(xkb_keymap) => {
+                // Build the compose index from the actual keymap
+                match ComposeIndex::build(&xkb_keymap) {
+                    Ok(index) => {
+                        eprintln!("Loaded {} base characters with variants", index.count());
+                        self.compose_index = Some(Arc::new(index));
+                        self.try_create_ui();
+                    }
+                    Err(e) => eprintln!("Failed to build compose index: {}", e),
+                }
+            }
+            Err(e) => eprintln!("Failed to parse keymap: {}", e),
+        }
+    }
 
     fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, event: KeyEvent) {
         eprintln!("Key pressed: code={}, keysym={:?}", event.raw_code, event.keysym);

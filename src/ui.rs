@@ -93,8 +93,9 @@ impl CharRefUI {
         if self.input_text.is_empty() {
             self.draw_text_colored("Type a letter...", 20.0, input_y, 14.0, text_tertiary());
         } else {
-            let text = format!("→ {}", self.input_text);
-            self.draw_text_colored(&text, 20.0, input_y, 16.0, accent_color());
+            // Just show the filter letter prominently
+            let text = self.input_text.clone();
+            self.draw_text_colored(&text, 20.0, input_y, 18.0, accent_color());
         }
 
         // Render results with spacing adjusted for larger text
@@ -225,27 +226,42 @@ impl CharRefUI {
         // Draw character (large and prominent) - 28px
         self.draw_text_colored(&entry.character, x, y, 28.0, text_primary());
 
-        // Draw arrow - centered vertically
-        self.draw_text_colored("→", x + 50.0, y + 8.0, 14.0, text_tertiary());
+        // Parse key sequence - formats:
+        // Direct: "AltGr-w" or "Shift-a"
+        // Dead key: "AltGr-`  e" (double space separates steps)
+        // More readable color for modifiers (brighter than before)
+        let modifier_color = Color::from_rgba(0.65, 0.65, 0.7, 1.0).unwrap();
 
-        // Parse the key sequence to extract the important part
-        // Format: "AltGr+X y" where X is the accent key
-        if let Some(rest) = entry.key_sequence.strip_prefix("AltGr+") {
-            // Extract just the accent key (everything before the space or end)
-            let accent_key = if let Some(space_pos) = rest.find(' ') {
-                &rest[..space_pos]
-            } else {
-                rest  // No space, use everything (e.g., "AltGr+5")
-            };
+        // Check if this is a dead key sequence (has double space)
+        if let Some(space_pos) = entry.key_sequence.find("  ") {
+            // Dead key sequence: "AltGr-`  e"
+            let first_part = &entry.key_sequence[..space_pos];
+            let second_part = entry.key_sequence[space_pos..].trim();
 
-            // Draw "AltGr" small and dim - vertically centered
-            self.draw_text_colored("AltGr", x + 75.0, y + 11.0, 12.0, text_tertiary());
+            // Parse first part (e.g., "AltGr-`")
+            if let Some(dash_pos) = first_part.rfind('-') {
+                let modifier = &first_part[..dash_pos];
+                let key1 = &first_part[dash_pos + 1..];
 
-            // Draw the accent key LARGE and prominent - vertically centered
-            self.draw_text_colored(accent_key, x + 125.0, y + 3.0, 24.0, accent_color());
+                // Draw modifier (readable size and color)
+                self.draw_text_colored(modifier, x + 50.0, y + 8.0, 14.0, modifier_color);
+                // Draw first key prominent (pushed right for longer modifiers)
+                self.draw_text_colored(key1, x + 150.0, y + 2.0, 22.0, accent_color());
+                // Draw second key (the base letter)
+                self.draw_text_colored(second_part, x + 185.0, y + 2.0, 22.0, accent_color());
+            }
+        } else if let Some(dash_pos) = entry.key_sequence.rfind('-') {
+            // Direct combination: "AltGr-w"
+            let modifier = &entry.key_sequence[..dash_pos];
+            let key = &entry.key_sequence[dash_pos + 1..];
+
+            // Draw modifier (readable size and color)
+            self.draw_text_colored(modifier, x + 50.0, y + 8.0, 14.0, modifier_color);
+            // Draw key prominent (pushed right for longer modifiers)
+            self.draw_text_colored(key, x + 150.0, y + 2.0, 22.0, accent_color());
         } else {
-            // Fallback: just draw the sequence as-is
-            self.draw_text_colored(&entry.key_sequence, x + 75.0, y + 7.0, 16.0, text_secondary());
+            // Fallback: just draw as-is
+            self.draw_text_colored(&entry.key_sequence, x + 50.0, y + 7.0, 16.0, text_secondary());
         }
     }
 }
