@@ -38,7 +38,7 @@ use std::sync::Arc;
 use ui::CharRefUI;
 
 const WINDOW_WIDTH: u32 = 280;
-const WINDOW_HEIGHT: u32 = 400;
+const WINDOW_HEIGHT: u32 = 420;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("Starting kbdviz character reference tool...");
@@ -254,24 +254,36 @@ impl KeyboardHandler for App {
 impl PointerHandler for App {
     fn pointer_frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_pointer::WlPointer, events: &[PointerEvent]) {
         for event in events {
-            if let PointerEventKind::Press { button, .. } = event.kind {
-                // Left mouse button = 272 (BTN_LEFT)
-                if button == 272 {
-                    if let Some(ref mut ui) = self.ui {
-                        if let Some(character) = ui.handle_click(event.position.0, event.position.1) {
-                            // Copy to clipboard using wl-copy
-                            if let Err(e) = std::process::Command::new("wl-copy")
-                                .arg(&character)
-                                .spawn()
-                            {
-                                eprintln!("Failed to copy to clipboard: {}", e);
-                            } else {
-                                eprintln!("Copied '{}' to clipboard", character);
+            match event.kind {
+                PointerEventKind::Press { button, .. } => {
+                    // Left mouse button = 272 (BTN_LEFT)
+                    if button == 272 {
+                        if let Some(ref mut ui) = self.ui {
+                            if let Some(character) = ui.handle_click(event.position.0, event.position.1) {
+                                // Copy to clipboard using wl-copy
+                                if let Err(e) = std::process::Command::new("wl-copy")
+                                    .arg(&character)
+                                    .spawn()
+                                {
+                                    eprintln!("Failed to copy to clipboard: {}", e);
+                                } else {
+                                    eprintln!("Copied '{}' to clipboard", character);
+                                }
+                                self.render();
                             }
+                        }
+                    }
+                }
+                PointerEventKind::Motion { .. } => {
+                    // Handle hover state
+                    if let Some(ref mut ui) = self.ui {
+                        if ui.handle_mouse_move(event.position.0, event.position.1) {
+                            // Hover state changed, re-render
                             self.render();
                         }
                     }
                 }
+                _ => {}
             }
         }
     }

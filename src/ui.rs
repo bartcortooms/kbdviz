@@ -10,9 +10,21 @@ use xkbcommon::xkb;
 
 fn bg_color() -> Color { Color::from_rgba(0.11, 0.11, 0.13, 1.0).unwrap() }
 fn text_primary() -> Color { Color::from_rgba(1.0, 1.0, 1.0, 1.0).unwrap() }
-fn text_secondary() -> Color { Color::from_rgba(0.75, 0.75, 0.78, 1.0).unwrap() }  // Lighter for better readability
+fn text_secondary() -> Color { Color::from_rgba(0.75, 0.75, 0.78, 1.0).unwrap() }
 fn text_tertiary() -> Color { Color::from_rgba(0.5, 0.5, 0.55, 1.0).unwrap() }
-fn accent_color() -> Color { Color::from_rgba(0.5, 0.7, 1.0, 1.0).unwrap() }
+fn accent_color() -> Color { Color::from_rgba(0.65, 0.85, 1.0, 1.0).unwrap() }  // Bright target key color
+
+// Keycap styling colors
+fn keycap_bg() -> tiny_skia::ColorU8 { tiny_skia::ColorU8::from_rgba(48, 48, 54, 255) }
+fn keycap_border() -> tiny_skia::ColorU8 { tiny_skia::ColorU8::from_rgba(70, 70, 78, 255) }
+fn modifier_keycap_bg() -> tiny_skia::ColorU8 { tiny_skia::ColorU8::from_rgba(34, 34, 40, 255) }
+fn modifier_text() -> Color { Color::from_rgba(0.6, 0.6, 0.65, 1.0).unwrap() }  // Dimmer modifier text
+fn connector_color() -> Color { Color::from_rgba(0.65, 0.65, 0.7, 1.0).unwrap() }  // Brighter + and → symbols
+fn divider_color() -> tiny_skia::ColorU8 { tiny_skia::ColorU8::from_rgba(50, 50, 55, 255) }
+fn hover_highlight() -> tiny_skia::ColorU8 { tiny_skia::ColorU8::from_rgba(35, 35, 40, 255) }
+
+// Layout constants
+const LEFT_MARGIN: f32 = 24.0;
 
 /// A clickable region with its character
 struct ClickRegion {
@@ -38,6 +50,8 @@ pub struct CharRefUI {
     click_regions: Vec<ClickRegion>,
     // Track which row was just copied (by index, for visual feedback)
     copied_row: Option<usize>,
+    // Track which row is being hovered
+    hovered_row: Option<usize>,
 }
 
 impl CharRefUI {
@@ -67,6 +81,7 @@ impl CharRefUI {
             compose_index,
             click_regions: Vec::new(),
             copied_row: None,
+            hovered_row: None,
         }
     }
 
@@ -106,6 +121,26 @@ impl CharRefUI {
         None
     }
 
+    /// Handle mouse movement, returns true if hover state changed (needs re-render)
+    pub fn handle_mouse_move(&mut self, _x: f64, y: f64) -> bool {
+        let y = y as f32;
+        let mut new_hover = None;
+
+        for (index, region) in self.click_regions.iter().enumerate() {
+            if y >= region.y_start && y < region.y_end {
+                new_hover = Some(index);
+                break;
+            }
+        }
+
+        if new_hover != self.hovered_row {
+            self.hovered_row = new_hover;
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn render(&mut self) {
         // Clear background
         self.pixmap.fill(bg_color());
@@ -125,23 +160,27 @@ impl CharRefUI {
 
         // Draw input text or hint
         if self.input_text.is_empty() {
-            self.draw_text_colored("Type a letter...", 20.0, input_y, 14.0, text_tertiary());
+            self.draw_text_colored("Type a letter...", LEFT_MARGIN, input_y, 14.0, text_tertiary());
         } else {
             // Just show the filter letter prominently
             let text = self.input_text.clone();
-            self.draw_text_colored(&text, 20.0, input_y, 18.0, accent_color());
+            self.draw_text_colored(&text, LEFT_MARGIN, input_y, 26.0, accent_color());
+
+            // Draw a subtle divider line below the header
+            self.draw_horizontal_line(LEFT_MARGIN, 54.0, self.width as f32 - LEFT_MARGIN * 2.0);
         }
 
         // Render results with spacing adjusted for larger text
         let row_height = 34.0;
-        let mut y = 50.0;
+        let mut y = 68.0;  // More spacing after divider
         if results.is_empty() && !self.input_text.is_empty() {
-            self.draw_text_colored("No special characters found", 20.0, y, 13.0, text_tertiary());
+            self.draw_text_colored("No special characters found", LEFT_MARGIN, y, 13.0, text_tertiary());
         } else if !results.is_empty() {
             for (index, entry) in results.iter().take(10).enumerate() {
-                // Check if this row was just copied
+                // Check if this row is copied or hovered
                 let is_copied = self.copied_row == Some(index);
-                self.draw_result(&entry, 20.0, y, row_height, is_copied);
+                let is_hovered = self.hovered_row == Some(index);
+                self.draw_result(&entry, LEFT_MARGIN, y, row_height, is_copied, is_hovered);
 
                 // Track clickable region
                 self.click_regions.push(ClickRegion {
@@ -157,9 +196,9 @@ impl CharRefUI {
         // Show hints when empty
         if self.input_text.is_empty() {
             let hints_y = (self.height as f32) - 80.0;
-            self.draw_text_colored("Find special characters:", 20.0, hints_y, 13.0, text_secondary());
-            self.draw_text_colored("Try: a e i o u c n s z l y", 20.0, hints_y + 20.0, 12.0, text_tertiary());
-            self.draw_text_colored("ESC to close · click to copy", 20.0, hints_y + 45.0, 12.0, text_tertiary());
+            self.draw_text_colored("Find special characters:", LEFT_MARGIN, hints_y, 13.0, text_secondary());
+            self.draw_text_colored("Try: a e i o u c n s z l y", LEFT_MARGIN, hints_y + 20.0, 12.0, text_tertiary());
+            self.draw_text_colored("ESC to close · click to copy", LEFT_MARGIN, hints_y + 45.0, 12.0, text_tertiary());
         }
 
         // Copy pixmap to Wayland buffer
@@ -180,9 +219,8 @@ impl CharRefUI {
         self.surface.damage_buffer(0, 0, self.width as i32, self.height as i32);
     }
 
-    fn draw_row_highlight(&mut self, x: f32, y: f32, w: f32, h: f32) {
-        // Draw a subtle lighter background - just slightly brighter than bg_color
-        let highlight = tiny_skia::ColorU8::from_rgba(38, 38, 42, 255).premultiply();
+    fn draw_row_highlight(&mut self, x: f32, y: f32, w: f32, h: f32, color: tiny_skia::ColorU8) {
+        let highlight = color.premultiply();
 
         let x_start = x.max(0.0) as usize;
         let x_end = (x + w).min(self.width as f32) as usize;
@@ -196,6 +234,109 @@ impl CharRefUI {
                 pixels[idx] = highlight;
             }
         }
+    }
+
+    fn draw_horizontal_line(&mut self, x: f32, y: f32, width: f32) {
+        let line_color = divider_color().premultiply();
+        let x_start = x.max(0.0) as usize;
+        let x_end = (x + width).min(self.width as f32) as usize;
+        let py = y as usize;
+
+        if py < self.height as usize {
+            let pixels = self.pixmap.pixels_mut();
+            for px in x_start..x_end {
+                let idx = py * self.width as usize + px;
+                pixels[idx] = line_color;
+            }
+        }
+    }
+
+    fn draw_rounded_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, fill: tiny_skia::ColorU8, border: tiny_skia::ColorU8) {
+        let x_start = x.max(0.0) as i32;
+        let x_end = (x + w).min(self.width as f32) as i32;
+        let y_start = y.max(0.0) as i32;
+        let y_end = (y + h).min(self.height as f32) as i32;
+
+        let pixels = self.pixmap.pixels_mut();
+        let r = radius;
+
+        for py in y_start..y_end {
+            for px in x_start..x_end {
+                let local_x = px as f32 - x;
+                let local_y = py as f32 - y;
+
+                // Check if we're in a corner region
+                let in_corner = |cx: f32, cy: f32| -> f32 {
+                    let dx = local_x - cx;
+                    let dy = local_y - cy;
+                    (dx * dx + dy * dy).sqrt()
+                };
+
+                let mut inside = true;
+                #[allow(unused_assignments)]
+                let mut on_border = false;
+
+                // Top-left corner
+                if local_x < r && local_y < r {
+                    let dist = in_corner(r, r);
+                    inside = dist <= r;
+                    on_border = dist > r - 1.5 && dist <= r;
+                }
+                // Top-right corner
+                else if local_x > w - r && local_y < r {
+                    let dist = in_corner(w - r, r);
+                    inside = dist <= r;
+                    on_border = dist > r - 1.5 && dist <= r;
+                }
+                // Bottom-left corner
+                else if local_x < r && local_y > h - r {
+                    let dist = in_corner(r, h - r);
+                    inside = dist <= r;
+                    on_border = dist > r - 1.5 && dist <= r;
+                }
+                // Bottom-right corner
+                else if local_x > w - r && local_y > h - r {
+                    let dist = in_corner(w - r, h - r);
+                    inside = dist <= r;
+                    on_border = dist > r - 1.5 && dist <= r;
+                }
+                // Edges (not corners)
+                else {
+                    on_border = local_x < 1.0 || local_x > w - 1.5 || local_y < 1.0 || local_y > h - 1.5;
+                }
+
+                if inside {
+                    let idx = (py as usize) * self.width as usize + (px as usize);
+                    pixels[idx] = if on_border { border.premultiply() } else { fill.premultiply() };
+                }
+            }
+        }
+    }
+
+    /// Draw a keycap-styled box with text inside
+    fn draw_keycap(&mut self, text: &str, x: f32, y: f32, is_modifier: bool) -> f32 {
+        let font_size = if is_modifier { 12.0 } else { 16.0 };
+        let padding_x = if is_modifier { 6.0 } else { 8.0 };
+        let padding_y = 4.0;
+        let height = 24.0;
+
+        // Estimate text width (rough approximation based on character count)
+        let char_width = if is_modifier { 7.0 } else { 10.0 };
+        let text_width = text.chars().count() as f32 * char_width;
+        let width = text_width + padding_x * 2.0;
+
+        // Draw the keycap background
+        let bg = if is_modifier { modifier_keycap_bg() } else { keycap_bg() };
+        self.draw_rounded_rect(x, y, width, height, 4.0, bg, keycap_border());
+
+        // Draw the text centered in the keycap
+        let text_color = if is_modifier { modifier_text() } else { accent_color() };
+        let text_y = y + padding_y;
+        let text_x = x + padding_x;
+        self.draw_text_colored(text, text_x, text_y, font_size, text_color);
+
+        // Return the width so caller knows where to position next element
+        width
     }
 
     fn draw_text_colored(&mut self, text: &str, x: f32, y: f32, size: f32, color: Color) {
@@ -245,20 +386,33 @@ impl CharRefUI {
         });
     }
 
-    fn draw_result(&mut self, entry: &ComposeEntry, x: f32, y: f32, row_height: f32, is_copied: bool) {
-        // Draw subtle highlight background if this row was just copied
+    fn draw_result(&mut self, entry: &ComposeEntry, x: f32, y: f32, row_height: f32, is_copied: bool, is_hovered: bool) {
+        // Draw subtle highlight background for hover or copied state
         if is_copied {
-            self.draw_row_highlight(0.0, y - 2.0, self.width as f32, row_height);
+            // Copied: slightly brighter highlight
+            let copied_color = tiny_skia::ColorU8::from_rgba(42, 42, 48, 255);
+            self.draw_row_highlight(0.0, y - 2.0, self.width as f32, row_height, copied_color);
+        } else if is_hovered {
+            // Hover: subtle highlight
+            self.draw_row_highlight(0.0, y - 2.0, self.width as f32, row_height, hover_highlight());
         }
 
         // Draw character (large and prominent) - 28px
         self.draw_text_colored(&entry.character, x, y, 28.0, text_primary());
 
+        // Fixed column positions for vertical alignment
+        let keycap_y = y + 4.0;
+        let col_modifier = x + 45.0;    // Modifier keycap (e.g., AltGr, AltGr-Shift)
+        let col_plus = x + 138.0;       // "+" symbol
+        let col_key1 = x + 155.0;       // First key keycap
+        let col_arrow = x + 192.0;      // "→" symbol (dead keys)
+        let col_key2 = x + 215.0;       // Second key keycap (dead keys)
+
+        let symbol_color = connector_color();
+
         // Parse key sequence - formats:
         // Direct: "AltGr-w" or "Shift-a"
         // Dead key: "AltGr-`  e" (double space separates steps)
-        // More readable color for modifiers (brighter than before)
-        let modifier_color = Color::from_rgba(0.65, 0.65, 0.7, 1.0).unwrap();
 
         // Check if this is a dead key sequence (has double space)
         if let Some(space_pos) = entry.key_sequence.find("  ") {
@@ -271,25 +425,25 @@ impl CharRefUI {
                 let modifier = &first_part[..dash_pos];
                 let key1 = &first_part[dash_pos + 1..];
 
-                // Draw modifier (readable size and color)
-                self.draw_text_colored(modifier, x + 50.0, y + 8.0, 14.0, modifier_color);
-                // Draw first key prominent (pushed right for longer modifiers)
-                self.draw_text_colored(key1, x + 150.0, y + 2.0, 22.0, accent_color());
-                // Draw second key (the base letter)
-                self.draw_text_colored(second_part, x + 185.0, y + 2.0, 22.0, accent_color());
+                // Draw in fixed columns
+                self.draw_keycap(modifier, col_modifier, keycap_y, true);
+                self.draw_text_colored("+", col_plus, keycap_y + 4.0, 14.0, symbol_color);
+                self.draw_keycap(key1, col_key1, keycap_y, false);
+                self.draw_text_colored("→", col_arrow, keycap_y + 3.0, 14.0, symbol_color);
+                self.draw_keycap(second_part, col_key2, keycap_y, false);
             }
         } else if let Some(dash_pos) = entry.key_sequence.rfind('-') {
             // Direct combination: "AltGr-w"
             let modifier = &entry.key_sequence[..dash_pos];
             let key = &entry.key_sequence[dash_pos + 1..];
 
-            // Draw modifier (readable size and color)
-            self.draw_text_colored(modifier, x + 50.0, y + 8.0, 14.0, modifier_color);
-            // Draw key prominent (pushed right for longer modifiers)
-            self.draw_text_colored(key, x + 150.0, y + 2.0, 22.0, accent_color());
+            // Draw in fixed columns
+            self.draw_keycap(modifier, col_modifier, keycap_y, true);
+            self.draw_text_colored("+", col_plus, keycap_y + 4.0, 14.0, symbol_color);
+            self.draw_keycap(key, col_key1, keycap_y, false);
         } else {
-            // Fallback: just draw as-is
-            self.draw_text_colored(&entry.key_sequence, x + 50.0, y + 7.0, 16.0, text_secondary());
+            // Fallback: just draw as keycap
+            self.draw_keycap(&entry.key_sequence, col_modifier, keycap_y, false);
         }
     }
 }
