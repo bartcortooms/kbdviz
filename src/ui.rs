@@ -14,6 +14,13 @@ fn text_secondary() -> Color { Color::from_rgba(0.75, 0.75, 0.78, 1.0).unwrap() 
 fn text_tertiary() -> Color { Color::from_rgba(0.5, 0.5, 0.55, 1.0).unwrap() }
 fn accent_color() -> Color { Color::from_rgba(0.5, 0.7, 1.0, 1.0).unwrap() }
 
+/// A clickable region with its character
+struct ClickRegion {
+    y_start: f32,
+    y_end: f32,
+    character: String,
+}
+
 pub struct CharRefUI {
     surface: WlSurface,
     width: u32,
@@ -26,6 +33,11 @@ pub struct CharRefUI {
 
     input_text: String,
     compose_index: Arc<ComposeIndex>,
+
+    // Track clickable regions for the current render
+    click_regions: Vec<ClickRegion>,
+    // Track which character was just copied (for visual feedback)
+    copied_char: Option<String>,
 }
 
 impl CharRefUI {
@@ -53,10 +65,15 @@ impl CharRefUI {
             swash_cache,
             input_text: String::new(),
             compose_index,
+            click_regions: Vec::new(),
+            copied_char: None,
         }
     }
 
     pub fn handle_key_press(&mut self, _raw_code: u32, keysym: xkb::Keysym) {
+        // Clear copied indicator on any key press
+        self.copied_char = None;
+
         // Handle backspace
         if keysym == xkb::Keysym::BackSpace {
             self.input_text.clear();
@@ -74,9 +91,27 @@ impl CharRefUI {
         }
     }
 
+    /// Handle a click at the given position, returns the character if one was clicked
+    pub fn handle_click(&mut self, _x: f64, y: f64) -> Option<String> {
+        let y = y as f32;
+
+        for region in &self.click_regions {
+            if y >= region.y_start && y < region.y_end {
+                let character = region.character.clone();
+                self.copied_char = Some(character.clone());
+                return Some(character);
+            }
+        }
+
+        None
+    }
+
     pub fn render(&mut self) {
         // Clear background
         self.pixmap.fill(bg_color());
+
+        // Clear click regions from previous render
+        self.click_regions.clear();
 
         // Get results
         let results = if self.input_text.is_empty() {
@@ -98,13 +133,24 @@ impl CharRefUI {
         }
 
         // Render results with spacing adjusted for larger text
+        let row_height = 34.0;
         let mut y = 50.0;
         if results.is_empty() && !self.input_text.is_empty() {
             self.draw_text_colored("No special characters found", 20.0, y, 13.0, text_tertiary());
         } else if !results.is_empty() {
             for entry in results.iter().take(10) {
-                self.draw_result(&entry, 20.0, y);
-                y += 34.0;  // Spacing for larger text
+                // Check if this character was just copied
+                let is_copied = self.copied_char.as_ref() == Some(&entry.character);
+                self.draw_result(&entry, 20.0, y, is_copied);
+
+                // Track clickable region
+                self.click_regions.push(ClickRegion {
+                    y_start: y,
+                    y_end: y + row_height,
+                    character: entry.character.clone(),
+                });
+
+                y += row_height;
             }
         }
 
@@ -113,7 +159,7 @@ impl CharRefUI {
             let hints_y = (self.height as f32) - 80.0;
             self.draw_text_colored("Find special characters:", 20.0, hints_y, 13.0, text_secondary());
             self.draw_text_colored("Try: a e i o u c n s z l y", 20.0, hints_y + 20.0, 12.0, text_tertiary());
-            self.draw_text_colored("ESC to close", 20.0, hints_y + 45.0, 12.0, text_tertiary());
+            self.draw_text_colored("ESC to close · click to copy", 20.0, hints_y + 45.0, 12.0, text_tertiary());
         }
 
         // Copy pixmap to Wayland buffer
@@ -181,9 +227,21 @@ impl CharRefUI {
         });
     }
 
-    fn draw_result(&mut self, entry: &ComposeEntry, x: f32, y: f32) {
+    fn draw_result(&mut self, entry: &ComposeEntry, x: f32, y: f32, is_copied: bool) {
         // Draw character (large and prominent) - 28px
-        self.draw_text_colored(&entry.character, x, y, 28.0, text_primary());
+        // Use green color if just copied
+        let char_color = if is_copied {
+            Color::from_rgba(0.4, 0.9, 0.4, 1.0).unwrap()  // Green for copied
+        } else {
+            text_primary()
+        };
+        self.draw_text_colored(&entry.character, x, y, 28.0, char_color);
+
+        // Show "copied" indicator
+        if is_copied {
+            self.draw_text_colored("copied!", x + 220.0, y + 8.0, 12.0, Color::from_rgba(0.4, 0.9, 0.4, 1.0).unwrap());
+            return;  // Don't draw key sequence when showing copied
+        }
 
         // Parse key sequence - formats:
         // Direct: "AltGr-w" or "Shift-a"

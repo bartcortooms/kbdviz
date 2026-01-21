@@ -6,15 +6,15 @@ use compose::ComposeIndex;
 use keyboard::XkbKeymap;
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
-    delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_registry,
-    delegate_seat, delegate_shm,
+    delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
+    delegate_registry, delegate_seat, delegate_shm,
     output::{OutputHandler, OutputState},
     reexports::{
         calloop::{EventLoop, LoopSignal},
         calloop_wayland_source::WaylandSource,
         client::{
             globals::registry_queue_init,
-            protocol::{wl_keyboard, wl_output, wl_seat, wl_surface},
+            protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface},
             Connection, QueueHandle,
         },
     },
@@ -22,6 +22,7 @@ use smithay_client_toolkit::{
     registry_handlers,
     seat::{
         keyboard::{KeyEvent, KeyboardHandler, Keymap, Modifiers},
+        pointer::{PointerEvent, PointerEventKind, PointerHandler},
         Capability, SeatHandler, SeatState,
     },
     shell::{
@@ -196,6 +197,9 @@ impl SeatHandler for App {
         if capability == Capability::Keyboard {
             let _ = self.seat_state.get_keyboard(qh, &seat, None);
         }
+        if capability == Capability::Pointer {
+            let _ = self.seat_state.get_pointer(qh, &seat);
+        }
     }
     fn remove_capability(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat, _: Capability) {}
     fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
@@ -247,6 +251,32 @@ impl KeyboardHandler for App {
     fn update_modifiers(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, _: Modifiers, _: u32) {}
 }
 
+impl PointerHandler for App {
+    fn pointer_frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_pointer::WlPointer, events: &[PointerEvent]) {
+        for event in events {
+            if let PointerEventKind::Press { button, .. } = event.kind {
+                // Left mouse button = 272 (BTN_LEFT)
+                if button == 272 {
+                    if let Some(ref mut ui) = self.ui {
+                        if let Some(character) = ui.handle_click(event.position.0, event.position.1) {
+                            // Copy to clipboard using wl-copy
+                            if let Err(e) = std::process::Command::new("wl-copy")
+                                .arg(&character)
+                                .spawn()
+                            {
+                                eprintln!("Failed to copy to clipboard: {}", e);
+                            } else {
+                                eprintln!("Copied '{}' to clipboard", character);
+                            }
+                            self.render();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 impl ProvidesRegistryState for App {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
@@ -264,6 +294,7 @@ delegate_compositor!(App);
 delegate_output!(App);
 delegate_seat!(App);
 delegate_keyboard!(App);
+delegate_pointer!(App);
 delegate_layer!(App);
 delegate_shm!(App);
 delegate_registry!(App);
