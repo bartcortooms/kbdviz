@@ -13,21 +13,31 @@ A lightweight Wayland overlay that helps you discover how to type special charac
 
 ## Installation
 
-### Debian/Ubuntu
+### Pre-built Packages
 
-Build and install a .deb package:
+Download from [GitHub Releases](https://github.com/bartcortooms/kbdviz/releases):
+
+- **Debian/Ubuntu**: `kbdviz_*_amd64.deb`
+- **Other distros**: `kbdviz-*-linux-x86_64` (standalone binary)
 
 ```bash
+# Debian/Ubuntu
+sudo dpkg -i kbdviz_*_amd64.deb
+
+# Other distros
+chmod +x kbdviz-*-linux-x86_64
+sudo cp kbdviz-*-linux-x86_64 /usr/local/bin/kbdviz
+```
+
+### Build from Source
+
+```bash
+# Debian/Ubuntu
 cargo install cargo-deb
 cargo deb
 sudo dpkg -i target/debian/kbdviz_*.deb
-```
 
-### Other Linux Distributions
-
-Build and install the binary:
-
-```bash
+# Other distros
 cargo build --release
 sudo cp target/release/kbdviz /usr/local/bin/
 ```
