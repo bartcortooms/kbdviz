@@ -11,11 +11,36 @@ A lightweight Wayland overlay that helps you discover how to type special charac
 - **Fast Lookup**: Type a base character to see all variants with their key combinations
 - **Unobtrusive**: Layer-shell overlay that can be quickly shown and dismissed
 
-## Usage
+## Installation
+
+### Debian/Ubuntu
+
+Build and install a .deb package:
 
 ```bash
-cargo run --release
+cargo install cargo-deb
+cargo deb
+sudo dpkg -i target/debian/kbdviz_*.deb
 ```
+
+### Other Linux Distributions
+
+Build and install the binary:
+
+```bash
+cargo build --release
+sudo cp target/release/kbdviz /usr/local/bin/
+```
+
+### Requirements
+
+- Rust 1.70+ (for building)
+- Wayland compositor with layer-shell support
+- libxkbcommon
+
+## Usage
+
+Run `kbdviz` from a terminal or bind it to a key in your compositor.
 
 1. Type a letter (e.g., `e`, `a`, `o`)
 2. See all variants with their key combinations
@@ -44,18 +69,6 @@ For dead key sequences, two keys are shown (e.g., `` ` `` then `e`).
 kbdviz receives your keyboard layout from the Wayland compositor and scans all AltGr and AltGr+Shift combinations to build an index of special characters. It also detects dead keys and shows their possible completions.
 
 Characters are indexed by their base letter using Unicode NFD decomposition (é → e), so typing `e` shows all e-variants.
-
-## Building
-
-```bash
-cargo build --release
-```
-
-### Requirements
-
-- Rust 1.70+
-- Wayland compositor with layer-shell support
-- libxkbcommon
 
 ## Project Structure
 
