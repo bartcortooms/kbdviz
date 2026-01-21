@@ -9,6 +9,7 @@ A lightweight Wayland overlay that helps you discover how to type special charac
 - **Layout-Aware**: Reads your actual keyboard layout from the Wayland compositor
 - **Dead Key Support**: Shows sequences like `AltGr-'  e` for é
 - **Fast Lookup**: Type a base character to see all variants with their key combinations
+- **Click to Copy**: Click any character to copy it to clipboard
 - **Unobtrusive**: Layer-shell overlay that can be quickly shown and dismissed
 
 ## Installation
@@ -47,6 +48,7 @@ sudo cp target/release/kbdviz /usr/local/bin/
 - Rust 1.70+ (for building)
 - Wayland compositor with layer-shell support
 - libxkbcommon
+- wl-clipboard (for click-to-copy)
 
 ## Usage
 
@@ -54,7 +56,8 @@ Run `kbdviz` from a terminal or bind it to a key in your compositor.
 
 1. Type a letter (e.g., `e`, `a`, `o`)
 2. See all variants with their key combinations
-3. Press **ESC** to close
+3. Click a character to copy it to clipboard
+4. Press **ESC** to close
 
 ### Example
 
