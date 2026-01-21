@@ -18,27 +18,28 @@ A lightweight Wayland overlay that helps you discover how to type special charac
 
 Download from [GitHub Releases](https://github.com/bartcortooms/kbdviz/releases):
 
-- **Debian/Ubuntu**: `kbdviz_*_amd64.deb`
-- **Other distros**: `kbdviz-*-linux-x86_64` (standalone binary)
-
+**Debian/Ubuntu:**
 ```bash
-# Debian/Ubuntu
 sudo dpkg -i kbdviz_*_amd64.deb
+```
 
-# Other distros
+**Other distros:**
+```bash
 chmod +x kbdviz-*-linux-x86_64
 sudo cp kbdviz-*-linux-x86_64 /usr/local/bin/kbdviz
 ```
 
 ### Build from Source
 
+**Debian/Ubuntu:**
 ```bash
-# Debian/Ubuntu
 cargo install cargo-deb
 cargo deb
 sudo dpkg -i target/debian/kbdviz_*.deb
+```
 
-# Other distros
+**Other distros:**
+```bash
 cargo build --release
 sudo cp target/release/kbdviz /usr/local/bin/
 ```
@@ -82,18 +83,6 @@ For dead key sequences, two keys are shown (e.g., `` ` `` then `e`).
 kbdviz receives your keyboard layout from the Wayland compositor and scans all AltGr and AltGr+Shift combinations to build an index of special characters. It also detects dead keys and shows their possible completions.
 
 Characters are indexed by their base letter using Unicode NFD decomposition (é → e), so typing `e` shows all e-variants.
-
-## Project Structure
-
-```
-kbdviz/
-├── Cargo.toml
-└── src/
-    ├── main.rs       # Wayland app, event loop, keyboard handling
-    ├── keyboard.rs   # XKB keymap wrapper
-    ├── compose.rs    # Character index builder
-    └── ui.rs         # Rendering with tiny-skia + cosmic-text
-```
 
 ## Configuration
 
