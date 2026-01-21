@@ -351,7 +351,7 @@ impl CharRefUI {
 
         // Set buffer size and text
         buffer_ref.set_size(Some(self.width as f32), Some(self.height as f32));
-        buffer_ref.set_text(text, Attrs::new(), Shaping::Advanced);
+        buffer_ref.set_text(text, &Attrs::new(), Shaping::Advanced);
 
         // Shape the text
         buffer_ref.shape_until_scroll(false);
