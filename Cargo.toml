@@ -2,6 +2,13 @@
 name = "kbdviz"
 version = "0.2.0"
 edition = "2021"
+authors = ["Bart Cortooms"]
+description = "Keyboard character reference tool for Wayland"
+license = "MIT"
+repository = "https://github.com/bartcortooms/kbdviz"
+readme = "README.md"
+keywords = ["keyboard", "wayland", "xkb", "compose", "characters"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 xkbcommon = "0.8"
@@ -12,3 +19,17 @@ calloop = "0.14"
 cosmic-text = "0.13"
 tiny-skia = "0.11"
 unicode-normalization = "0.1"
+
+[package.metadata.deb]
+maintainer = "Bart Cortooms"
+section = "utils"
+priority = "optional"
+depends = "$auto"
+assets = [
+    ["target/release/kbdviz", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/kbdviz/", "644"],
+]
+extended-description = """
+A lightweight Wayland overlay that helps you discover how to type
+special characters (like ë, é, ñ, å) using your keyboard layout.
+Type a base character to see all variants with their key combinations."""
