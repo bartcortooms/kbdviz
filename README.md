@@ -2,6 +2,8 @@
 
 A lightweight Wayland overlay that helps you discover how to type special characters (like ë, é, ñ, å) using your keyboard layout.
 
+![kbdviz screenshot](assets/screenshot.png)
+
 ## Features
 
 - **Layout-Aware**: Reads your actual keyboard layout from the Wayland compositor
