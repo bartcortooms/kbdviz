@@ -1,5 +1,7 @@
 # Agent Instructions
 
+For project overview, features, and usage, see [README.md](README.md).
+
 ## Screenshot Script
 
 Use `scripts/screenshot.sh` to capture the kbdviz UI for verification and documentation.
