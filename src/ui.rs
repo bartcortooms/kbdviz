@@ -1,5 +1,5 @@
 use crate::compose::{ComposeEntry, ComposeIndex};
-use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping, SwashCache};
+use cosmic_text::{Attrs, Buffer, FontSystem, Hinting, Metrics, Shaping, SwashCache};
 use smithay_client_toolkit::{
     reexports::client::protocol::{wl_shm, wl_surface::WlSurface},
     shm::{slot::SlotPool, Shm},
@@ -345,13 +345,14 @@ impl CharRefUI {
         // Create a buffer for this text
         let metrics = Metrics::new(size, size * 1.4);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
+        buffer.set_hinting(&mut self.font_system, Hinting::Enabled);
 
         // Borrow the buffer with the font system
         let mut buffer_ref = buffer.borrow_with(&mut self.font_system);
 
         // Set buffer size and text
         buffer_ref.set_size(Some(self.width as f32), Some(self.height as f32));
-        buffer_ref.set_text(text, &Attrs::new(), Shaping::Advanced);
+        buffer_ref.set_text(text, &Attrs::new(), Shaping::Advanced, None);
 
         // Shape the text
         buffer_ref.shape_until_scroll(false);
