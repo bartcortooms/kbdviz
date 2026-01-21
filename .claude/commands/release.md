@@ -7,18 +7,30 @@ Create a new release for kbdviz. The GitHub Action handles building and uploadin
 
 2. **Update version**: Edit `Cargo.toml` to update the version number.
 
-3. **Update screenshot**: Run `./scripts/screenshot.sh` to update the README screenshot. This requires a Wayland session with grim, magick (ImageMagick), niri, and jq installed.
+3. **Update screenshot**: Run `./scripts/screenshot.sh` to update the README screenshot. Requires: grim, magick (ImageMagick), niri, jq.
 
-4. **Commit and tag**:
-   - Stage all changes
-   - Commit with message "Bump version to {version}"
-   - Create a git tag `v{version}`
-   - Push the commit and tag to origin
-
-5. **Update release notes**: After the GitHub Action creates the release, update the notes with a summary of changes:
+4. **Generate release notes**: Get commits since last tag and summarize changes:
    ```bash
-   gh release edit v{version} --notes "release notes here"
+   git log $(git describe --tags --abbrev=0)..HEAD --oneline
    ```
-   Include sections for: New Features, Improvements, Bug Fixes, Documentation changes.
+   Write release notes with sections: New Features, Improvements, Bug Fixes, Documentation.
 
-6. **Report**: Show the user the release URL: `https://github.com/bartcortooms/kbdviz/releases/tag/v{version}`
+5. **Commit and tag**:
+   ```bash
+   git add -A
+   git commit -m "Bump version to {version}"
+   git tag v{version}
+   ```
+
+6. **Create release with notes** (before pushing tag):
+   ```bash
+   gh release create v{version} --title "v{version}" --notes "release notes here"
+   ```
+
+7. **Push commit and tag**:
+   ```bash
+   git push && git push origin v{version}
+   ```
+   The GitHub Action will add build artifacts to the existing release.
+
+8. **Report**: Show the user the release URL: `https://github.com/bartcortooms/kbdviz/releases/tag/v{version}`
