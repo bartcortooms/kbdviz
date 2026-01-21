@@ -5,11 +5,10 @@ use smithay_client_toolkit::{
     shm::{slot::SlotPool, Shm},
 };
 use std::sync::Arc;
-use tiny_skia::{Color, Paint, Pixmap, Rect};
+use tiny_skia::{Color, Pixmap};
 use xkbcommon::xkb;
 
 fn bg_color() -> Color { Color::from_rgba(0.11, 0.11, 0.13, 1.0).unwrap() }
-fn input_bg() -> Color { Color::from_rgba(0.15, 0.15, 0.18, 1.0).unwrap() }
 fn text_primary() -> Color { Color::from_rgba(1.0, 1.0, 1.0, 1.0).unwrap() }
 fn text_secondary() -> Color { Color::from_rgba(0.75, 0.75, 0.78, 1.0).unwrap() }  // Lighter for better readability
 fn text_tertiary() -> Color { Color::from_rgba(0.5, 0.5, 0.55, 1.0).unwrap() }
@@ -133,46 +132,6 @@ impl CharRefUI {
 
         self.surface.attach(Some(buffer.wl_buffer()), 0, 0);
         self.surface.damage_buffer(0, 0, self.width as i32, self.height as i32);
-    }
-
-    fn draw_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: Color) {
-        let rect = Rect::from_xywh(x, y, w, h).unwrap();
-        self.pixmap.fill_rect(rect, &Paint {
-            shader: tiny_skia::Shader::SolidColor(color),
-            ..Default::default()
-        }, tiny_skia::Transform::identity(), None);
-    }
-
-    fn draw_rounded_rect(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: Color) {
-        use tiny_skia::{PathBuilder, FillRule};
-
-        let mut pb = PathBuilder::new();
-        // Top left
-        pb.move_to(x + radius, y);
-        // Top right
-        pb.line_to(x + w - radius, y);
-        pb.quad_to(x + w, y, x + w, y + radius);
-        // Bottom right
-        pb.line_to(x + w, y + h - radius);
-        pb.quad_to(x + w, y + h, x + w - radius, y + h);
-        // Bottom left
-        pb.line_to(x + radius, y + h);
-        pb.quad_to(x, y + h, x, y + h - radius);
-        // Back to top left
-        pb.line_to(x, y + radius);
-        pb.quad_to(x, y, x + radius, y);
-        pb.close();
-
-        if let Some(path) = pb.finish() {
-            self.pixmap.fill_path(&path, &Paint {
-                shader: tiny_skia::Shader::SolidColor(color),
-                ..Default::default()
-            }, FillRule::Winding, tiny_skia::Transform::identity(), None);
-        }
-    }
-
-    fn draw_text(&mut self, text: &str, x: f32, y: f32, size: f32, _bold: bool) {
-        self.draw_text_colored(text, x, y, size, text_primary());
     }
 
     fn draw_text_colored(&mut self, text: &str, x: f32, y: f32, size: f32, color: Color) {
