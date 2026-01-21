@@ -401,7 +401,7 @@ impl CharRefUI {
         self.draw_text_colored(&entry.character, x, y, 28.0, text_primary());
 
         // Fixed column positions for vertical alignment
-        let keycap_y = y + 4.0;
+        let keycap_y = y + 9.0;
         let col_modifier = x + 45.0;    // Modifier keycap (e.g., AltGr, AltGr-Shift)
         let col_plus = x + 138.0;       // "+" symbol
         let col_key1 = x + 155.0;       // First key keycap

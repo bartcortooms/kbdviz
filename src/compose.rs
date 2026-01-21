@@ -179,14 +179,22 @@ impl ComposeIndex {
             }
         }
 
-        // Add dead key combinations
+        // Add dead key combinations (both lowercase and uppercase)
         for (dead_key_combo, dead_type) in &dead_keys {
             let combinations = get_dead_key_combinations(dead_type);
             for (base_letter, result_char) in combinations {
-                // Use space to separate sequential steps
+                // Add lowercase variant
                 let key_sequence = format!("{}  {}", dead_key_combo, base_letter);
                 if let Some(base) = find_base_char(result_char) {
                     add_entry(&mut index, base, &result_char.to_string(), &key_sequence);
+                }
+
+                // Add uppercase variant
+                let upper_base = base_letter.to_uppercase().next().unwrap();
+                let upper_result = result_char.to_uppercase().next().unwrap();
+                let upper_key_sequence = format!("{}  {}", dead_key_combo, upper_base);
+                if let Some(base) = find_base_char(upper_result) {
+                    add_entry(&mut index, base, &upper_result.to_string(), &upper_key_sequence);
                 }
             }
         }
@@ -202,20 +210,26 @@ impl ComposeIndex {
         let base_char = input.chars().next();
 
         if let Some(ch) = base_char {
-            // Try both lowercase and uppercase
-            let mut results = Vec::new();
+            let is_upper = ch.is_uppercase();
+            let lookup_key = ch.to_lowercase().next().unwrap();
 
-            if let Some(variants) = self.index.get(&ch.to_lowercase().next().unwrap()) {
-                results.extend(variants.clone());
+            if let Some(variants) = self.index.get(&lookup_key) {
+                // Filter by case: if input is uppercase, only show uppercase variants
+                variants
+                    .iter()
+                    .filter(|entry| {
+                        let first_char = entry.character.chars().next().unwrap_or(' ');
+                        if is_upper {
+                            first_char.is_uppercase()
+                        } else {
+                            first_char.is_lowercase()
+                        }
+                    })
+                    .cloned()
+                    .collect()
+            } else {
+                Vec::new()
             }
-
-            if ch.is_uppercase() {
-                if let Some(variants) = self.index.get(&ch.to_uppercase().next().unwrap()) {
-                    results.extend(variants.clone());
-                }
-            }
-
-            results
         } else {
             Vec::new()
         }
