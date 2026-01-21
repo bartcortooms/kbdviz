@@ -386,10 +386,24 @@ impl CharRefUI {
                 return;
             }
 
-            // Draw the pixel
+            // Alpha-blend the glyph pixel with the background
             let idx = (pixel_y * self.width as i32 + pixel_x) as usize;
-            self.pixmap.pixels_mut()[idx] =
-                tiny_skia::ColorU8::from_rgba(color.r(), color.g(), color.b(), color.a()).premultiply();
+            let alpha = color.a() as f32 / 255.0;
+            if alpha > 0.0 {
+                let bg = self.pixmap.pixels()[idx];
+                let bg_r = bg.red() as f32;
+                let bg_g = bg.green() as f32;
+                let bg_b = bg.blue() as f32;
+                let fg_r = color.r() as f32;
+                let fg_g = color.g() as f32;
+                let fg_b = color.b() as f32;
+                // Standard alpha blending: out = fg * alpha + bg * (1 - alpha)
+                let out_r = (fg_r * alpha + bg_r * (1.0 - alpha)) as u8;
+                let out_g = (fg_g * alpha + bg_g * (1.0 - alpha)) as u8;
+                let out_b = (fg_b * alpha + bg_b * (1.0 - alpha)) as u8;
+                self.pixmap.pixels_mut()[idx] =
+                    tiny_skia::ColorU8::from_rgba(out_r, out_g, out_b, 255).premultiply();
+            }
         });
     }
 
