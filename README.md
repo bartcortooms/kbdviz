@@ -84,6 +84,24 @@ kbdviz/
 
 ## Configuration
 
+### Keyboard Shortcut
+
+Add a keybind to quickly launch kbdviz. For niri, add to your config:
+
+```kdl
+binds {
+    Mod+Shift+K { spawn "kbdviz"; }
+}
+```
+
+For sway:
+
+```
+bindsym $mod+Shift+k exec kbdviz
+```
+
+### Keyboard Layout
+
 The tool automatically uses your system's keyboard layout. To use a layout with AltGr combinations (recommended), configure your compositor. For example, in niri:
 
 ```kdl
