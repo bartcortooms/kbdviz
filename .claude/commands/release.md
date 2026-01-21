@@ -15,22 +15,17 @@ Create a new release for kbdviz. The GitHub Action handles building and uploadin
    ```
    Write release notes with sections: New Features, Improvements, Bug Fixes, Documentation.
 
-5. **Commit and tag**:
+5. **Commit and push**:
    ```bash
    git add -A
    git commit -m "Bump version to {version}"
-   git tag v{version}
+   git push
    ```
 
-6. **Create release with notes** (before pushing tag):
+6. **Create release with notes**:
    ```bash
-   gh release create v{version} --title "v{version}" --notes "release notes here"
+   gh release create v{version} --target main --title "v{version}" --notes "release notes here"
    ```
+   This creates both the tag and release on GitHub. The GitHub Action will then add build artifacts.
 
-7. **Push commit and tag**:
-   ```bash
-   git push && git push origin v{version}
-   ```
-   The GitHub Action will add build artifacts to the existing release.
-
-8. **Report**: Show the user the release URL: `https://github.com/bartcortooms/kbdviz/releases/tag/v{version}`
+7. **Report**: Show the user the release URL: `https://github.com/bartcortooms/kbdviz/releases/tag/v{version}`
