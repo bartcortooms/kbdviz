@@ -7,7 +7,7 @@ Create a new release for kbdviz. The GitHub Action handles building and uploadin
 
 2. **Update version**: Edit `Cargo.toml` to update the version number.
 
-3. **Update screenshot**: Run `./scripts/screenshot.sh` to update the README screenshot. This requires a Wayland session with grim and wtype installed. The script launches kbdviz anchored to the top-left corner, types 'e' to show variants, and captures automatically.
+3. **Update screenshot**: Run `./scripts/screenshot.sh` to update the README screenshot. This requires a Wayland session with grim, magick (ImageMagick), niri, and jq installed.
 
 4. **Commit and tag**:
    - Stage all changes
@@ -15,4 +15,10 @@ Create a new release for kbdviz. The GitHub Action handles building and uploadin
    - Create a git tag `v{version}`
    - Push the commit and tag to origin
 
-5. **Report**: The GitHub Action will build and create the release automatically. Show the user the release URL: `https://github.com/bartcortooms/kbdviz/releases/tag/v{version}`
+5. **Update release notes**: After the GitHub Action creates the release, update the notes with a summary of changes:
+   ```bash
+   gh release edit v{version} --notes "release notes here"
+   ```
+   Include sections for: New Features, Improvements, Bug Fixes, Documentation changes.
+
+6. **Report**: Show the user the release URL: `https://github.com/bartcortooms/kbdviz/releases/tag/v{version}`
